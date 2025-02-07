@@ -1,37 +1,72 @@
-import express from 'express';
-import path from 'path';
-import mongoose from 'mongoose';
-import bodyParser from 'body-parser';
-import config from './config';
-import userRoute from './routes/userRoute';
-import productRoute from './routes/productRoute';
-import orderRoute from './routes/orderRoute';
-import uploadRoute from './routes/uploadRoute';
+const app = require("./app");
+const dotenv = require("dotenv");
+const { dbConnectionWithRetry } = require("./config/database");
+const path = require("path");
+const express = require("express");
+const http = require("http");
+const { initializeSocket } = require("./config/socket");
 
-const mongodbUrl = config.MONGODB_URL;
-mongoose
-  .connect(mongodbUrl, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    useCreateIndex: true,
-  })
-  .catch((error) => console.log(error.reason));
+//.env config
 
-const app = express();
-app.use(bodyParser.json());
-app.use('/api/uploads', uploadRoute);
-app.use('/api/users', userRoute);
-app.use('/api/products', productRoute);
-app.use('/api/orders', orderRoute);
-app.get('/api/config/paypal', (req, res) => {
-  res.send(config.PAYPAL_CLIENT_ID);
-});
-app.use('/uploads', express.static(path.join(__dirname, '/../uploads')));
-app.use(express.static(path.join(__dirname, '/../frontend/build')));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(`${__dirname}/../frontend/build/index.html`));
+dotenv.config({
+    path: "./config/config.env",
 });
 
-app.listen(config.PORT, () => {
-  console.log('Server started at http://localhost:5000');
+const server = http.createServer(app);
+const io = initializeSocket(server);
+
+const startServer = async () => {
+    try {
+        //check database connection
+        await dbConnectionWithRetry();
+
+        //start the server
+        server.listen(process.env.PORT, () => {
+            console.log(
+                `\x1b[32m+\x1b[0m Server is running at http://localhost:${process.env.PORT}/`
+            );
+        });
+
+        // io.on("connection", (socket) => {
+        //     // console.log(`Client Connected:`, socket.id);
+
+        //     socket.on("inventory_update", (data) => {
+        //         // console.log("Received stock update from client:", data);
+        //     });
+
+        //     socket.on("disconnect", () => {
+        //         // console.log("User disconnected :", socket.id);
+        //     });
+        // });
+    } catch (error) {
+        console.error("\x1b[31m- Failed to start the server: \x1b[0m", error.message);
+        process.exit(1);
+    }
+};
+
+app.use(express.static(path.join(__dirname, "../frontend/dist")));
+
+app.get("*", (req, res) => {
+    res.sendFile(path.resolve(__dirname, "../frontend/dist", "index.html"));
+});
+
+startServer();
+
+//handling uncaught exception
+
+process.on("uncaughtException", (err) => {
+    console.log(`Error: ${err.message}\n`);
+    console.log(`Shutting down the server due to uncaught Exception `);
+    process.exit(1);
+});
+
+//unhandled promise rejection
+
+process.on("unhandledRejection", (err, promise) => {
+    // console.log(`- Error : ${err.message}`)
+    console.error("Unhandled Rejection at:", promise, "reason:", err);
+    console.log(`\n- Shutting down the server due to unhandled promise rejection`);
+    server.close(() => {
+        process.exit(1);
+    });
 });
