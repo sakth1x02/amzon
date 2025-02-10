@@ -1,0 +1,92 @@
+#!/bin/bash
+set -e
+
+# Update and upgrade system packages
+sudo apt update -y
+sudo apt upgrade -y
+
+# Install Git
+sudo apt install -y git
+
+# Install Node.js and npm (Using NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify Node.js and npm installation
+node -v
+npm -v
+
+# Install Java 17 (OpenJDK)
+sudo apt install -y openjdk-17-jdk
+
+# Verify Java installation
+java -version
+
+# Install Nginx (before modifying JWT secrets)
+sudo apt install -y nginx
+
+# Start and enable Nginx to run on boot
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+# Create a custom welcome message for the Presentation Tier EC2 instance
+echo "Welcome to Presentation Tier EC2 instance in Availability Zone B." | sudo tee /usr/share/nginx/html/index.html
+
+# Clone the GitHub repository
+cd /home/ubuntu
+git clone https://github.com/sakth1x02/amzon.git
+
+# Navigate to the backend directory
+cd amzon/backend
+
+# Generate three random JWT secrets
+JWT_SECRET=$(openssl rand -hex 32)
+JWT_SELLER_SECRET=$(openssl rand -hex 32)
+JWT_ADMIN_SECRET=$(openssl rand -hex 32)
+
+# Ensure config.env and .env exist before modifying
+touch config/config.env
+touch .env
+
+# Function to properly replace or add variables ensuring new lines
+replace_or_add() {
+    local file=$1
+    local key=$2
+    local value=$3
+    
+    # Ensure the file ends with a newline before appending new data
+    sed -i -e '$a\' "$file"
+    
+    if grep -q "^$key=" "$file"; then
+        sed -i "s|^$key=.*|$key=$value|" "$file"
+    else
+        echo "$key=$value" >> "$file"
+    fi
+}
+
+# Replace or add JWT secrets in config.env
+replace_or_add "config/config.env" "JWT_SECRET" "$JWT_SECRET"
+replace_or_add "config/config.env" "JWT_SELLER_SECRET" "$JWT_SELLER_SECRET"
+replace_or_add "config/config.env" "JWT_ADMIN_SECRET" "$JWT_ADMIN_SECRET"
+
+# Replace or add JWT secrets in .env
+replace_or_add ".env" "JWT_SECRET" "$JWT_SECRET"
+replace_or_add ".env" "JWT_SELLER_SECRET" "$JWT_SELLER_SECRET"
+replace_or_add ".env" "JWT_ADMIN_SECRET" "$JWT_ADMIN_SECRET"
+
+# Restart Nginx after modifications
+sudo systemctl restart nginx
+
+# Navigate to the frontend directory
+cd /home/ubuntu/amzon/frontend
+
+# Install frontend dependencies
+sudo npm install
+
+# Build the frontend
+sudo npm run build
+
+# Print completion message
+echo "Git, Node.js, npm, Java 17, and Nginx installed successfully."
+echo "Repository cloned, JWT secrets updated, frontend dependencies installed, and build completed."
+echo "Custom welcome message added to Nginx."
