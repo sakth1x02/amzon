@@ -29,8 +29,33 @@ sudo apt install -y nginx
 sudo systemctl start nginx
 sudo systemctl enable nginx
 
+# Install MySQL server (without secure installation)
+sudo apt install -y mysql-server
+
+# Start and enable MySQL to run on boot
+sudo systemctl start mysql
+sudo systemctl enable mysql
+
 # Create a custom welcome message for the Presentation Tier EC2 instance
-echo "Welcome to Presentation Tier EC2 instance in Availability Zone B." | sudo tee /usr/share/nginx/html/index.html
+echo "Welcome to Presentation Tier EC2 instance in Availability Zone A." | sudo tee /var/www/html/index.html
+
+# Ensure Nginx serves the message properly
+sudo tee /etc/nginx/sites-available/default > /dev/null <<EOL
+server {
+    listen 80;
+    server_name _;
+    
+    root /var/www/html;
+    index index.html;
+    
+    location / {
+        try_files \$uri /index.html;
+    }
+}
+EOL
+
+# Restart Nginx to apply the changes
+sudo systemctl restart nginx
 
 # Clone the GitHub repository
 cd /home/ubuntu
@@ -45,6 +70,7 @@ JWT_SELLER_SECRET=$(openssl rand -hex 32)
 JWT_ADMIN_SECRET=$(openssl rand -hex 32)
 
 # Ensure config.env and .env exist before modifying
+mkdir -p config
 touch config/config.env
 touch .env
 
@@ -86,7 +112,18 @@ sudo npm install
 # Build the frontend
 sudo npm run build
 
+sudo npm install -g nodemon
+
+sudo chmod +x /home/ubuntu
+sudo chmod +x /home/ubuntu/amzon
+sudo chmod +x /home/ubuntu/amzon/frontend
+
+sudo chown -R www-data:www-data /home/ubuntu/amzon/frontend/dist
+
+
+
+
 # Print completion message
-echo "Git, Node.js, npm, Java 17, and Nginx installed successfully."
+echo "Git, Node.js, npm, Java 17, Nginx, and MySQL installed successfully."
 echo "Repository cloned, JWT secrets updated, frontend dependencies installed, and build completed."
-echo "Custom welcome message added to Nginx."
+echo "Custom welcome message added to Nginx and properly configured."
