@@ -60,3 +60,270 @@ server {
 #		try_files $uri $uri/ =404;
 #	}
 #}
+
+
+cd amzon/backend
+
+sudo pm2 startup ubuntu -u ubuntu --hp /home/ubuntu
+
+sudo pm2 start npm --name backend -- run dev -- --host --watch
+sudo pm2 save  
+
+#!/bin/bash
+set -e
+
+# Update and upgrade system packages
+sudo apt update -y
+sudo apt upgrade -y
+
+# Install Git
+sudo apt install -y git
+
+# Install Node.js and npm (Using NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify Node.js and npm installation
+node -v
+npm -v
+
+# Install Java 17 (OpenJDK)
+sudo apt install -y openjdk-17-jdk
+
+# Verify Java installation
+java -version
+
+# Install Nginx (before modifying JWT secrets)
+sudo apt install -y nginx
+
+# Start and enable Nginx to run on boot
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+# Install MySQL server (without secure installation)
+sudo apt install -y mysql-server
+
+# Start and enable MySQL to run on boot
+sudo systemctl start mysql
+sudo systemctl enable mysql
+
+# Create a custom welcome message for the Presentation Tier EC2 instance
+echo "Welcome to Presentation Tier EC2 instance in Availability Zone A." | sudo tee /var/www/html/index.html
+
+# Ensure Nginx serves the message properly
+sudo tee /etc/nginx/sites-available/default > /dev/null <<EOL
+server {
+    listen 80;
+    server_name _;
+    
+    root /var/www/html;
+    index index.html;
+    
+    location / {
+        try_files \$uri /index.html;
+    }
+}
+EOL
+
+# Restart Nginx to apply the changes
+sudo systemctl restart nginx
+
+# Clone the GitHub repository
+cd /home/ubuntu
+git clone https://github.com/sakth1x02/amzon.git
+
+# Navigate to the backend directory
+cd amzon/backend
+
+# Generate three random JWT secrets
+JWT_SECRET=$(openssl rand -hex 32)
+JWT_SELLER_SECRET=$(openssl rand -hex 32)
+JWT_ADMIN_SECRET=$(openssl rand -hex 32)
+
+# Ensure config.env and .env exist before modifying
+mkdir -p config
+touch config/config.env
+touch .env
+
+# Function to properly replace or add variables ensuring new lines
+replace_or_add() {
+    local file=$1
+    local key=$2
+    local value=$3
+    
+    # Ensure the file ends with a newline before appending new data
+    sed -i -e '$a\' "$file"
+    
+    if grep -q "^$key=" "$file"; then
+        sed -i "s|^$key=.*|$key=$value|" "$file"
+    else
+        echo "$key=$value" >> "$file"
+    fi
+}
+
+# Replace or add JWT secrets in config.env
+replace_or_add "config/config.env" "JWT_SECRET" "$JWT_SECRET"
+replace_or_add "config/config.env" "JWT_SELLER_SECRET" "$JWT_SELLER_SECRET"
+replace_or_add "config/config.env" "JWT_ADMIN_SECRET" "$JWT_ADMIN_SECRET"
+
+# Replace or add JWT secrets in .env
+replace_or_add ".env" "JWT_SECRET" "$JWT_SECRET"
+replace_or_add ".env" "JWT_SELLER_SECRET" "$JWT_SELLER_SECRET"
+replace_or_add ".env" "JWT_ADMIN_SECRET" "$JWT_ADMIN_SECRET"
+
+# Restart Nginx after modifications
+sudo systemctl restart nginx
+
+# Navigate to the frontend directory
+cd /home/ubuntu/amzon/frontend
+
+# Install frontend dependencies
+sudo npm install
+
+# Build the frontend
+sudo npm run build
+
+sudo npm install -g nodemon
+
+sudo chmod +x /home/ubuntu
+sudo chmod +x /home/ubuntu/amzon
+sudo chmod +x /home/ubuntu/amzon/frontend
+
+sudo chown -R www-data:www-data /home/ubuntu/amzon/frontend/dist
+
+
+
+
+# Print completion message
+echo "Git, Node.js, npm, Java 17, Nginx, and MySQL installed successfully."
+echo "Repository cloned, JWT secrets updated, frontend dependencies installed, and build completed."
+echo "Custom welcome message added to Nginx and properly configured."
+
+
+
+sudo tee /etc/nginx/nginx.conf > /dev/null <<EOF
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 1024;
+    multi_accept on;
+}
+
+http {
+    ## Basic Settings ##
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    server_tokens off;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    ## Logging ##
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    ## Compression ##
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    ## Load Balancing for Application Servers ##
+    upstream app_servers {
+        least_conn;
+        server 10.0.158.12:4000;
+    }
+
+    ## Reverse Proxy for API ##
+    server {
+        listen 80;
+        server_name sakthidev.site;
+
+        ## Serve Frontend Static Files ##
+        root /home/ubuntu/amzon/frontend/dist;
+        index index.html;
+        location / {
+            try_files \$uri /index.html;
+        }
+
+        ## Proxy API Requests to Backend ##
+        location /api/ {
+            proxy_pass http://app_servers;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+        }
+    }
+
+EOF include /etc/nginx/sites-enabled/*;
+  
+
+
+
+  sudo tee /etc/nginx/nginx.conf > /dev/null <<EOF
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 1024;
+    multi_accept on;
+}
+
+http {
+    ## Basic Settings ##
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    server_tokens off;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    ## Logging ##
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    ## Compression ##
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    ## Load Balancing for Application Servers ##
+    upstream app_servers {
+        least_conn;
+        server 10.0.158.12:4000;
+    }
+
+    ## Reverse Proxy for API ##
+    server {
+        listen 80;
+        server_name sakthidev.site;
+
+        ## Serve Frontend Static Files ##
+        root /home/ubuntu/amzon/frontend/dist;
+        index index.html;
+        location / {
+            try_files \$uri /index.html;
+        }
+
+        ## Proxy API Requests to Backend ##
+        location /api/ {
+            proxy_pass http://app_servers;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+        }
+    }
+
+EOF include /etc/nginx/sites-enabled/*;
+
+

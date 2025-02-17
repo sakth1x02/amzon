@@ -39,20 +39,6 @@ sudo systemctl enable mysql
 # Create a custom welcome message for the Presentation Tier EC2 instance
 echo "Welcome to Presentation Tier EC2 instance in Availability Zone A." | sudo tee /var/www/html/index.html
 
-# Ensure Nginx serves the message properly
-sudo tee /etc/nginx/sites-available/default > /dev/null <<EOL
-server {
-    listen 80;
-    server_name _;
-    
-    root /var/www/html;
-    index index.html;
-    
-    location / {
-        try_files \$uri /index.html;
-    }
-}
-EOL
 
 # Restart Nginx to apply the changes
 sudo systemctl restart nginx

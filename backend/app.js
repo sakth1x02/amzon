@@ -67,3 +67,9 @@ app.use("/api/v1/wishlist", wishlist);
 app.use(errorHandlingMiddleware);
 
 module.exports = app;
+
+
+//  Health Check Route for AWS
+app.get("/health", (req, res) => {
+    res.status(200).json({ status: "healthy", uptime: process.uptime() });
+});
