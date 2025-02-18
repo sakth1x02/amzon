@@ -36,7 +36,6 @@ sudo apt install -y mysql-server
 sudo systemctl start mysql
 sudo systemctl enable mysql
 
-
 # Restart Nginx to apply the changes
 sudo systemctl restart nginx
 
@@ -101,12 +100,109 @@ sudo chmod +x /home/ubuntu
 sudo chmod +x /home/ubuntu/amzon
 sudo chmod +x /home/ubuntu/amzon/frontend
 
+sudo cp -r /home/ubuntu/amzon/frontend/dist/* /var/www/html/
+
 sudo chown -R www-data:www-data /home/ubuntu/amzon/frontend/dist
 
+# Update Nginx configuration
+sudo tee /etc/nginx/nginx.conf > /dev/null <<EOF
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 1024;
+    multi_accept on;
+}
+
+http {
+    ## Basic Settings ##
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    server_tokens off;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    ## Logging ##
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    ## Compression ##
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    ## Load Balancing for Application Servers ##
+    upstream app_servers {
+        least_conn;
+        server internal-application-tier-ALB-1903268183.us-east-2.elb.amazonaws.com:4000;
+    }
+
+    ## Reverse Proxy for API ##
+    server {
+        listen 80;
+        server_name sakthidev.site;
+
+        ## Serve Frontend Static Files ##
+        root /home/ubuntu/amzon/frontend/dist;
+        index index.html;
+        location / {
+            try_files \$uri /index.html;
+        }
+
+        ## Proxy API Requests to Backend ##
+        location /api/ {
+            proxy_pass http://app_servers;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+        }
+    }
+
+    ## Include additional site configurations ##
+    include /etc/nginx/sites-enabled/*;
+}
+EOF
 
 
+
+sudo tee /etc/nginx/sites-available/default > /dev/null <<EOF
+server {
+    listen 80;
+    server_name sakthidev.site;
+
+    root /home/ubuntu/amzon/frontend/dist;
+    index index.html;
+
+    location / {
+        try_files \$uri /index.html;
+    }
+
+    # Proxy API requests to the backend
+    location /api/ {
+        proxy_pass http://internal-application-tier-ALB-1903268183.us-east-2.elb.amazonaws.com:4000/;  # Change to your backend's IP & port
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    error_page 404 /index.html;
+}
+EOF
+
+
+# Test the Nginx configuration
+sudo nginx -t
+
+# Restart Nginx to apply changes
+sudo systemctl restart nginx
 
 # Print completion message
 echo "Git, Node.js, npm, Java 17, Nginx, and MySQL installed successfully."
 echo "Repository cloned, JWT secrets updated, frontend dependencies installed, and build completed."
-echo "Custom welcome message added to Nginx and properly configured."
+echo "Nginx configuration for sakthidev.site has been successfully updated and restarted."

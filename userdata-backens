@@ -1,0 +1,143 @@
+#!/bin/bash
+set -e
+
+# Update and upgrade system packages
+sudo apt update -y
+sudo apt upgrade -y
+
+# Install Git
+sudo apt install -y git
+
+# Install Node.js and npm (Using NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify Node.js and npm installation
+node -v
+npm -v
+
+# Install Java 17 (OpenJDK) - Optional if your backend requires it
+sudo apt install -y openjdk-17-jdk
+java -version
+
+# Install MySQL server (skip secure installation for now)
+sudo apt install -y mysql-server
+
+# Start and enable MySQL to run on boot
+sudo systemctl start mysql
+sudo systemctl enable mysql
+
+# Clone the GitHub repository
+cd /home/ubuntu
+git clone https://github.com/sakth1x02/amzon.git
+
+# Navigate to the backend directory
+cd amzon/backend
+
+# Generate three random JWT secrets
+JWT_SECRET=$(openssl rand -hex 32)
+JWT_SELLER_SECRET=$(openssl rand -hex 32)
+JWT_ADMIN_SECRET=$(openssl rand -hex 32)
+
+# Ensure config.env and .env exist before modifying
+mkdir -p config
+touch config/config.env
+touch .env
+
+# Function to properly replace or add variables ensuring new lines
+replace_or_add() {
+    local file=$1
+    local key=$2
+    local value=$3
+    
+    # Ensure the file ends with a newline before appending new data
+    sed -i -e '$a\' "$file"
+    
+    if grep -q "^$key=" "$file"; then
+        sed -i "s|^$key=.*|$key=$value|" "$file"
+    else
+        echo "$key=$value" >> "$file"
+    fi
+}
+
+# Replace or add JWT secrets in config.env
+replace_or_add "config/config.env" "JWT_SECRET" "$JWT_SECRET"
+replace_or_add "config/config.env" "JWT_SELLER_SECRET" "$JWT_SELLER_SECRET"
+replace_or_add "config/config.env" "JWT_ADMIN_SECRET" "$JWT_ADMIN_SECRET"
+
+# Replace or add JWT secrets in .env
+replace_or_add ".env" "JWT_SECRET" "$JWT_SECRET"
+replace_or_add ".env" "JWT_SELLER_SECRET" "$JWT_SELLER_SECRET"
+replace_or_add ".env" "JWT_ADMIN_SECRET" "$JWT_ADMIN_SECRET"
+
+# Install project dependencies
+sudo npm install
+
+# Install PM2 globally to manage backend process
+sudo npm install -g pm2
+
+sudo npm install -g nodemon
+
+# Set up PM2 to start the backend in production mode
+# First, ensure the environment is set to production
+export NODE_ENV=production
+
+# Start the backend with PM2 (using the start command for production)
+sudo pm2 start npm --name "backend" -- run start
+
+# Enable PM2 to auto-start on boot (for server restarts)
+sudo pm2 startup systemd -u ubuntu --hp /home/ubuntu
+
+# Save the PM2 process list
+sudo pm2 save
+
+# Set proper file permissions to secure the application
+sudo chmod -R 755 /home/ubuntu/amzon
+sudo chown -R ubuntu:ubuntu /home/ubuntu/amzon
+
+# Restart MySQL if needed to apply any changes
+sudo systemctl restart mysql
+
+
+
+cd /home/ubuntu
+
+# Create the 'ohio1.pem' file and add the RSA private key content
+cat <<EOF > ohio1.pem
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpQIBAAKCAQEAzg7s4P35FxXy0pB2JI4D4Dqz2az3wv9/eVSRG8A0ENz+uPDR
+fGcuWwiceqZFIR+9HTXqK/HPNyug29NJw2LwlCzv+dGK3qWW/jCeBgTt85laxXCW
+ZfIwuaoq8jhmpQBMPRfPcVXu5Tpkd79Fii5Sx1vSwdj3HisSxSQd4HVBo36RBwmX
+T4ZpPaeco1OacKU00AkMBeveV0s94the4tLKzsVsyU0RHnKuyJcod7EGFAplahCk
+7jal5PsS9LpwM9Si16NNyt7g0QNARQ4bHzH+W9HqqaW3atTKw0H5ncmoLLVYzqHf
+grcQTLl1h6tfLdx6zV5UtZwVihleRouyCqsFhQIDAQABAoIBAQC5Bh/fe02SVCwA
+tKTQ+BA05KEfwTeMCd2NtcjCcViPF9FFgT+phADUzyuq2efS8Wvfccz+fpeBQ5Si
+LtvaLNo3Qw6MdIJMn8WwIzmR0BVWGgqupQT3L3xfCpSbgNdyK41JgjrL2syzWjZi
+bAZmKGg+CI57b3WdyjGFgYOuS7uPsHVAiVvXow/4VCIM47tuKKzPWslTEgKjCD+s
+NGLn/jhl27Uqana/cR9jtID4+YoLAebG6/areCa7P/NcoBL1zPkkX3SSf8wVE+3/
+5K3myBC2ubTwmZ2qeoQPArF1VNwxq+rvs8jG+4UMxMk9n3GNRiVi1qNiPGyZz1bF
+dRdfWicVAoGBAPqjcZU/x1fGQKfOFNlw0XiAbAp+T0VhkmtRVajPE6L3+IFoX9Ot
+GX2Hz3VqXoXfy90gnnQo4s+uKtK+ho5AH6O1+eHec56SdCQEqvphAmsAwW2brGp7
+5VA7wdsdrTfTyMHynU+ODtgxIq1v1KJVdmpxw7wkXI+7sudoFHfVybrTAoGBANJ3
+WZsw2i9lAAcIzi9hCaKwE+v+ALCNGCEgus/PyC9gsvPeqxor1gqWsaQAnOhbEPbb
+u8gHEcgPmx5Ov9Lf39wpnaeDfS8FZp4lli3cfoj8UFa6OFoiz8NLO6TZe0W3gLaQ
+2c9o34UDzFDgb2sLTooFkHM/O8KqWZFPkIMIS9dHAoGAA+iUlt09wJKo43UFQjbO
+LXDjPm6l0dEptV65VT6Vcc8oIux7whNK+HgrtgsImlHZHgOqNOmGT/LJXCv4cTNy
+ytzFns4XQ3vJL96aw/jLTtveKFVrJOX1t4CXD1GxJ9O3p76e0WTHuntZrRa3XCi1
+BgfsI3z1rJAixBUNbKj60l0CgYEAoKabjltO4Eh/Kd9tyzqN6VHwEv4ytpEsrvTV
+xBS9oHR2hLId9v8pBbIbbK1PGAmTPGtjvf6vcv9+jzbbM3LR5LMbdSdoIcFEoEje
+hqk9KQE3rcu9ggf6gP7nSyD6+K9mn3SX3bsWiujoR3/ZbGMYE0DGD0JgMmpnrgSG
+sY5enbcCgYEAv8yI34FLUQMNC0TLkYiXVAE++x/SPKCioNzuRJg4GQ+cSpMc3cNI
+0rv2wyQEMrZswy8+qeRsVdXMAonuUxgqtH2rZUwZlAbvlpDC17gAPH3IFJqC/oAX
+BnmvuXrNqgccHoCkGjdVtfOx6XHXlbI26bNtnloiopeL8D0EZfhLJzc=
+-----END RSA PRIVATE KEY-----
+EOF
+
+# Set the appropriate permissions for the key file
+chmod 400 ohio1.pem
+
+# Print completion message
+echo "Backend services successfully set up for production."
+echo "JWT secrets have been generated and stored in .env and config.env."
+echo "Backend started with PM2 in production mode."
+echo "PM2 process saved for automatic restarts."
