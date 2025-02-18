@@ -36,9 +36,6 @@ sudo apt install -y mysql-server
 sudo systemctl start mysql
 sudo systemctl enable mysql
 
-# Create a custom welcome message for the Presentation Tier EC2 instance
-echo "Welcome to Presentation Tier EC2 instance in Availability Zone A." | sudo tee /var/www/html/index.html
-
 
 # Restart Nginx to apply the changes
 sudo systemctl restart nginx
